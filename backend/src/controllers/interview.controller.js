@@ -92,6 +92,135 @@ async function getInterviewReportByIdController(req, res, next) {
     }
 }
 
+function getPreparationTasks(interviewReport) {
+    return (interviewReport.preparationPlan || []).flatMap((day, dayIndex) =>
+        (day.tasks || []).map((task, taskIndex) => ({
+            taskId: `day-${dayIndex}-task-${taskIndex}`,
+            day: day.day,
+            task,
+            completed: Boolean(interviewReport.preparationProgress?.get?.(`day-${dayIndex}-task-${taskIndex}`))
+        }))
+    );
+}
+
+async function getPreparationProgressController(req, res, next) {
+    try {
+        const { interviewId } = req.params;
+        const userId = req.user?._id || req.user?.id;
+
+        if (!mongoose.Types.ObjectId.isValid(interviewId)) {
+            return res.status(404).json({
+                status: "failed",
+                message: "Interview report not found due to an invalid record identifier layout."
+            });
+        }
+
+        const interviewReport = await interviewReportModel.findOne({
+            _id: interviewId,
+            user: userId
+        });
+
+        if (!interviewReport) {
+            return res.status(404).json({
+                status: "failed",
+                message: "Interview report not found."
+            });
+        }
+
+        const tasks = getPreparationTasks(interviewReport);
+        const completedTasks = tasks.filter(task => task.completed).length;
+        const totalTasks = tasks.length;
+
+        return res.status(200).json({
+            status: "success",
+            message: "Preparation progress retrieved successfully.",
+            data: {
+                tasks,
+                completedTasks,
+                totalTasks,
+                progressPercent: totalTasks ? Math.round((completedTasks / totalTasks) * 100) : 0
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
+}
+
+async function updatePreparationProgressController(req, res, next) {
+    try {
+        const { interviewId, taskId } = req.params;
+        const { completed } = req.body || {};
+        const userId = req.user?._id || req.user?.id;
+
+        if (!mongoose.Types.ObjectId.isValid(interviewId)) {
+            return res.status(404).json({
+                status: "failed",
+                message: "Interview report not found due to an invalid record identifier layout."
+            });
+        }
+
+        if (typeof completed !== "boolean") {
+            return res.status(400).json({
+                status: "failed",
+                message: "The completed field must be a boolean."
+            });
+        }
+
+        const taskMatch = /^day-(0|[1-9]\d*)-task-(0|[1-9]\d*)$/.exec(taskId);
+        if (!taskMatch) {
+            return res.status(400).json({
+                status: "failed",
+                message: "The preparation task identifier is invalid."
+            });
+        }
+
+        const interviewReport = await interviewReportModel.findOne({
+            _id: interviewId,
+            user: userId
+        });
+
+        if (!interviewReport) {
+            return res.status(404).json({
+                status: "failed",
+                message: "Interview report not found."
+            });
+        }
+
+        const dayIndex = Number(taskMatch[1]);
+        const taskIndex = Number(taskMatch[2]);
+        const task = interviewReport.preparationPlan?.[dayIndex]?.tasks?.[taskIndex];
+        if (typeof task !== "string") {
+            return res.status(404).json({
+                status: "failed",
+                message: "Preparation task not found in this report."
+            });
+        }
+
+        if (!interviewReport.preparationProgress) {
+            interviewReport.preparationProgress = new Map();
+        }
+        interviewReport.preparationProgress.set(taskId, completed);
+        await interviewReport.save();
+
+        const tasks = getPreparationTasks(interviewReport);
+        const completedTasks = tasks.filter(item => item.completed).length;
+        const totalTasks = tasks.length;
+
+        return res.status(200).json({
+            status: "success",
+            message: "Preparation task progress updated successfully.",
+            data: {
+                task: tasks.find(item => item.taskId === taskId),
+                completedTasks,
+                totalTasks,
+                progressPercent: totalTasks ? Math.round((completedTasks / totalTasks) * 100) : 0
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
+}
+
 /**
  * @controller getAllInterviewOfAuserController
  * @description Collects a historical time-sorted array tracing every single preview report summary block associated with the active profile token.
@@ -254,6 +383,8 @@ async function toggleReportVisibilityController(req, res, next) {
 module.exports = {
     generateInterviewReportController,
     getInterviewReportByIdController,
+    getPreparationProgressController,
+    updatePreparationProgressController,
     getAllInterviewOfAuserController,
     generateResumePdfController,
     getPublicShareableReportController,

@@ -140,6 +140,11 @@ const interviewReportSchema = new mongoose.Schema({
     behavioralQuestions: [ behavioralQuestionSchema ],
     skillGaps: [ skillGapSchema ],
     preparationPlan: [ preparationPlanSchema ],
+    preparationProgress: {
+        type: Map,
+        of: Boolean,
+        default: {}
+    },
     
     // Injected into the root document state to hold tailored PDF resume contents
     tailoredResume: tailoredResumeSchema, 

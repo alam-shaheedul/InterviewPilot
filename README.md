@@ -508,6 +508,59 @@ Headers: Content-Type: application/pdf
 
 Headers: Content-Disposition: attachment; filename=tailored_resume_6654c10f.pdf
 
+7. Preparation Plan Progress Retrieval
+Endpoint URL: GET /api/interview/:interviewId/preparation-progress
+
+Access Control: Private (the report must belong to the authenticated user)
+
+Returns each preparation task with a stable task identifier (`day-<dayIndex>-task-<taskIndex>`), its completion state, completed/total task counts, and a progress percentage.
+
+8. Preparation Task Completion Update
+Endpoint URL: PATCH /api/interview/:interviewId/preparation-progress/:taskId
+
+Access Control: Private (the report and task must belong to the authenticated user)
+
+Payload Structure (application/json):
+
+```json
+{
+  "completed": true
+}
+```
+
+Task completion is stored separately from the generated preparation plan in the report document.
+
+9. Skill-Gap Practice Session Creation
+Endpoint URL: POST /api/interview/:interviewId/practice-sessions
+
+Access Control: Private (the selected skill must be a skill gap on the user's report)
+
+Payload Structure (application/json):
+
+```json
+{
+  "skill": "Kubernetes"
+}
+```
+
+Returns three practice questions without their ideal-answer guidance. The question context is stored in a temporary server-side session that expires after 30 minutes.
+
+10. Skill-Gap Practice Answer Submission
+Endpoint URL: POST /api/interview/:interviewId/practice-sessions/:sessionId/answers
+
+Access Control: Private (the active session must belong to the authenticated user and report)
+
+Payload Structure (application/json):
+
+```json
+{
+  "questionId": "q1",
+  "answer": "The candidate's answer."
+}
+```
+
+Returns the validated AI score and feedback. Answers and evaluations are not persisted.
+
 🛡️ Interactive Sandbox Prototyping & Anti-Cheat Engine (/api/sandbox)
 1. Active State Identity Synchronization
 Endpoint URL: GET /api/sandbox/current

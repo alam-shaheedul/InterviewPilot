@@ -1,9 +1,11 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import '../style/interview.scss';
 
 import { useInterview } from '../hooks/useInterview.js';
 import Sidebar from '../components/Sidebar.jsx';
+import SkillGapPractice from '../components/SkillGapPractice.jsx';
+import { getPreparationProgress, updatePreparationTask } from '../services/interview.api.js';
 
 const NAV_ITEMS = [
     { id: 'technical', label: 'Technical Questions', icon: <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" /></svg> },
@@ -38,19 +40,30 @@ const QuestionCard = ({ item, index }) => {
     );
 };
 
-const RoadMapDay = ({ day }) => (
+const RoadMapDay = ({ day, dayIndex, progressTasks = [], onToggleTask, updatingTaskId }) => (
     <div className='roadmap-day'>
         <div className='roadmap-day__header'>
             <span className='roadmap-day__badge'>Day {day?.day}</span>
             <h3 className='roadmap-day__focus'>{day?.focus}</h3>
         </div>
         <ul className='roadmap-day__tasks'>
-            {day?.tasks?.map((task, i) => (
-                <li key={i}>
-                    <span className='roadmap-day__bullet' />
-                    {task}
+            {day?.tasks?.map((task, i) => {
+                const taskId = `day-${dayIndex}-task-${i}`;
+                const taskProgress = progressTasks.find(item => item.taskId === taskId);
+                return (
+                <li key={taskId} className='roadmap-day__task'>
+                    <label className={`roadmap-day__task-label ${taskProgress?.completed ? 'is-complete' : ''}`}>
+                        <input
+                            type="checkbox"
+                            checked={Boolean(taskProgress?.completed)}
+                            onChange={event => onToggleTask(taskId, event.target.checked)}
+                            disabled={!taskProgress || updatingTaskId === taskId}
+                            aria-label={`Mark ${task} ${taskProgress?.completed ? 'incomplete' : 'complete'}`}
+                        />
+                        <span>{task}</span>
+                    </label>
                 </li>
-            ))}
+            )})}
         </ul>
     </div>
 );
@@ -69,6 +82,88 @@ const Interview = () => {
     const [activeNav, setActiveNav] = useState('technical');
     const [isDark, setIsDark] = useState(() => localStorage.getItem('theme') !== 'light');
     const [copied, setCopied] = useState(false);
+    const [progressData, setProgressData] = useState(null);
+    const [progressDataReportId, setProgressDataReportId] = useState('');
+    const [progressLoading, setProgressLoading] = useState(true);
+    const [progressError, setProgressError] = useState('');
+    const [progressNotice, setProgressNotice] = useState('');
+    const [updatingTaskId, setUpdatingTaskId] = useState('');
+
+    const loadPreparationProgress = useCallback(async () => {
+        setProgressLoading(true);
+        setProgressError('');
+        try {
+            const response = await getPreparationProgress(interviewId);
+            setProgressData(response.data);
+            setProgressDataReportId(interviewId);
+        } catch (requestError) {
+            setProgressError(
+                requestError.response?.data?.message ||
+                requestError.message ||
+                'Could not load preparation progress.'
+            );
+        } finally {
+            setProgressLoading(false);
+        }
+    }, [interviewId]);
+
+    useEffect(() => {
+        let isMounted = true;
+
+        const fetchProgress = async () => {
+            try {
+                const response = await getPreparationProgress(interviewId);
+                if (isMounted) {
+                    setProgressData(response.data);
+                    setProgressDataReportId(interviewId);
+                    setProgressError('');
+                }
+            } catch (requestError) {
+                if (isMounted) {
+                    setProgressError(
+                        requestError.response?.data?.message ||
+                        requestError.message ||
+                        'Could not load preparation progress.'
+                    );
+                }
+            } finally {
+                if (isMounted) setProgressLoading(false);
+            }
+        };
+
+        fetchProgress();
+        return () => {
+            isMounted = false;
+        };
+    }, [interviewId]);
+
+    const currentProgress = progressDataReportId === interviewId ? progressData : null;
+
+    const handleTaskToggle = async (taskId, completed) => {
+        setUpdatingTaskId(taskId);
+        setProgressError('');
+        setProgressNotice('');
+        try {
+            const response = await updatePreparationTask(interviewId, taskId, completed);
+            setProgressData(previous => ({
+                ...previous,
+                ...response.data,
+                tasks: (previous?.tasks || []).map(task =>
+                    task.taskId === taskId ? response.data.task : task
+                )
+            }));
+            setProgressDataReportId(interviewId);
+            setProgressNotice('Progress saved.');
+        } catch (requestError) {
+            setProgressError(
+                requestError.response?.data?.message ||
+                requestError.message ||
+                'Could not save preparation progress.'
+            );
+        } finally {
+            setUpdatingTaskId('');
+        }
+    };
 
     const handleShare = useCallback(() => {
         const url = `${window.location.origin}/interview/${interviewId}`;
@@ -206,8 +301,47 @@ const Interview = () => {
                                     <h2>Preparation Road Map</h2>
                                     <span className='content-header__count'>{report.preparationPlan?.length || 0}-day plan</span>
                                 </div>
+                                <div className="roadmap-progress">
+                                    <div className="roadmap-progress__summary">
+                                        <span>
+                                            {currentProgress
+                                                ? `${currentProgress.completedTasks} of ${currentProgress.totalTasks} tasks complete`
+                                                : progressLoading ? 'Loading task progress...' : 'Task progress unavailable'}
+                                        </span>
+                                        <strong>{currentProgress?.progressPercent ?? 0}%</strong>
+                                    </div>
+                                    <div
+                                        className="roadmap-progress__track"
+                                        role="progressbar"
+                                        aria-label="Preparation plan progress"
+                                        aria-valuemin="0"
+                                        aria-valuemax="100"
+                                        aria-valuenow={currentProgress?.progressPercent ?? 0}
+                                    >
+                                        <div
+                                            className="roadmap-progress__fill"
+                                            style={{ width: `${currentProgress?.progressPercent ?? 0}%` }}
+                                        />
+                                    </div>
+                                    {progressError && (
+                                        <div className="roadmap-progress__error" role="alert">
+                                            <span>{progressError}</span>
+                                            <button type="button" onClick={loadPreparationProgress}>Retry</button>
+                                        </div>
+                                    )}
+                                    {progressNotice && <p className="roadmap-progress__notice" role="status">{progressNotice}</p>}
+                                </div>
                                 <div className='roadmap-list'>
-                                    {report.preparationPlan?.map((day, i) => <RoadMapDay key={day.day || i} day={day} />)}
+                                    {report.preparationPlan?.map((day, i) => (
+                                        <RoadMapDay
+                                            key={day.day || i}
+                                            day={day}
+                                            dayIndex={i}
+                                            progressTasks={currentProgress?.tasks || []}
+                                            onToggleTask={handleTaskToggle}
+                                            updatingTaskId={updatingTaskId}
+                                        />
+                                    ))}
                                 </div>
                             </section>
                         )}
@@ -230,6 +364,7 @@ const Interview = () => {
                                 ))}
                             </div>
                         </div>
+                        <SkillGapPractice interviewId={interviewId} skillGaps={report.skillGaps || []} />
                     </aside>
                 </div>
             </div>

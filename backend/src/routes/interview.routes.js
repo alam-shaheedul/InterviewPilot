@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const authMiddleware = require('../middlewares/auth.middleware.js');
 const interviewController = require("../controllers/interview.controller.js");
+const practiceController = require("../controllers/practice.controller.js");
 const upload = require("../middlewares/file.middleware.js");
 const { processPdfUpload } = require('../middlewares/pdfUpload.middleware.js');
 
@@ -28,6 +29,30 @@ interviewRouter.patch(
     "/:interviewId/visibility",
     verifyUser,
     interviewController.toggleReportVisibilityController
+);
+
+interviewRouter.get(
+    "/:interviewId/preparation-progress",
+    verifyUser,
+    interviewController.getPreparationProgressController
+);
+
+interviewRouter.patch(
+    "/:interviewId/preparation-progress/:taskId",
+    verifyUser,
+    interviewController.updatePreparationProgressController
+);
+
+interviewRouter.post(
+    "/:interviewId/practice-sessions",
+    verifyUser,
+    practiceController.generatePracticeSessionController
+);
+
+interviewRouter.post(
+    "/:interviewId/practice-sessions/:sessionId/answers",
+    verifyUser,
+    practiceController.submitPracticeAnswerController
 );
 
 /**

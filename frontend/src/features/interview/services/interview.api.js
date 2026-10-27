@@ -37,6 +37,35 @@ export const getAllInterviewReports = async () => {
     return response.data;
 };
 
+export const getPreparationProgress = async (interviewId) => {
+    const response = await apiClient.get(`/api/interview/${interviewId}/preparation-progress`);
+    return response.data;
+};
+
+export const updatePreparationTask = async (interviewId, taskId, completed) => {
+    const response = await apiClient.patch(
+        `/api/interview/${interviewId}/preparation-progress/${taskId}`,
+        { completed }
+    );
+    return response.data;
+};
+
+export const createSkillGapPracticeSession = async (interviewId, skill) => {
+    const response = await apiClient.post(
+        `/api/interview/${interviewId}/practice-sessions`,
+        { skill }
+    );
+    return response.data;
+};
+
+export const submitSkillGapPracticeAnswer = async (interviewId, sessionId, questionId, answer) => {
+    const response = await apiClient.post(
+        `/api/interview/${interviewId}/practice-sessions/${sessionId}/answers`,
+        { questionId, answer }
+    );
+    return response.data;
+};
+
 /**
  * @description Service to generate resume pdf based on user data.
  */
